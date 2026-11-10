@@ -1,0 +1,167 @@
+<h1>They Left Amazon MSK and Saved 59%. Read the Fine Print.</h1>
+<h2>Amazon MSK vs self-managed Kafka: I rebuilt the bill with public AWS prices. The saving was real. It just was not about who runs Kafka.</h2>
+<figure><img src="https://raw.githubusercontent.com/saikumaresh/kafka-cost-model/main/docs/img/01-cover-landscape-animated.gif"></figure>
+<p><strong>If you only have a minute.</strong> In the Amazon MSK vs self-managed Kafka debate, a Kafka vendor moved off MSK, built its own Kafka on Kubernetes, and published a bill that was 59% cheaper. Its reasons for leaving were real, and when I rebuilt both bills with public AWS prices in a small open cost model, its numbers checked out almost to the dollar. But the 59% is two decisions stacked on top of each other: the cheap cluster runs in one availability zone instead of three, and the MSK side uses brokers twice the size the workload needs. Give both sides three zones and the saving shrinks to 31%. Right-size MSK and it disappears. Choose MSK Express and the managed option is the cheapest of all. The lesson is bigger than Kafka, and it comes at the end. The model and every assumption are open source.</p>
+<h2>Two bills, one Kafka</h2>
+<p>The Amazon MSK vs self-managed Kafka question usually arrives as a screenshot.</p>
+<p>Two monthly bills, side by side. Same workload: 5 MB of events every second, 2 TB kept, every message read once. Same region. Same Kafka.</p>
+<p>One bill says $2,740. The other says $1,119.</p>
+<p>That was the picture in a post from Artie's CTO on 3 November 2026. Artie had moved its own Kafka off Amazon MSK onto self-run Kafka using Strimzi on Kubernetes, and now sells that setup as a managed service at "EC2 plus 25%". The headline: 59% less than MSK.</p>
+<p>It is a good post. It is honest about why they left, and the pains are ones I recognise. I run a petabyte-scale data warehouse with Kafka ingestion feeding hundreds of pipelines. When a number like 59% shows up, someone in a planning meeting will forward it with one line: "Should we be doing this?"</p>
+<p>So I did what I would do in a design review. I did not argue with the screenshot. I rebuilt the bill.</p>
+<p>Think of two flats in Chennai. Same size, same street. One rent is half the other. You are halfway to signing before you notice the cheaper one has no power backup. Nobody lied to you. The difference was just not in the headline.</p>
+<p>That turned out to be very close to what happened here. But first, the reasons Artie left deserve a fair hearing, because they are real.</p>
+<h2>Why the managed service looked like the problem</h2>
+<p>Artie listed its pains with MSK plainly.</p>
+<p>The disks only grow. You can add storage to MSK brokers, but you cannot remove it, and after each increase there is a cooldown of at least six hours, sometimes more than a day. So teams overprovision, and pay for disk they do not use.</p>
+<p>New brokers sit idle. When you add brokers to an MSK Standard cluster, existing partitions do not move to them on their own. AWS's reassignment tool handles a limited number of partitions per call, so Artie wrote its own throttled rebalancer. An hour after adding three brokers in one of their examples, the new brokers still held far fewer partitions than the old ones.</p>
+<p>Config changes were slow. Changes that should take minutes took over an hour. Per-broker metrics needed a higher monitoring tier.</p>
+<p>And then there was the outage.</p>
+<p>On 9 May 2024, Artie added three brokers and moved a customer workload onto the cluster. That evening, one broker's CPU spiked. Consumers got stuck in "Rebalance in progress" loops. The broker sat above the 60% CPU alarm for most of four hours, hitting 87% at one point while the busiest other broker was at 13%.</p>
+<p>The cause was not Kafka itself. It was the IAM authentication agent on the broker. Every new client connection costs CPU to authenticate. When many clients reconnected at once, the broker spent its CPU on sign-ins, which caused timeouts, which caused more reconnects. At one point the IAM agent alone was using 135% CPU on that broker.</p>
+<p>Artie added jitter to client reconnects, then moved authentication to SASL/SCRAM, which pushes the expensive password hashing to the clients. Over the following year, it moved everything to self-run Kafka.</p>
+<p>If you have run streaming systems, you can feel that night. So the obvious conclusion writes itself: the managed service was the problem, and running it yourself fixes it.</p>
+<p>Here is the first twist. That outage was not only an MSK problem. It was a thundering herd.</p>
+<p>When many clients fail at the same moment and all retry at once, the retries become the next failure. I have seen the same shape in on-call data. When I analysed thousands of alarm tickets, about half turned out to be fan-out copies of one underlying failure. One thing broke, and everything downstream shouted about it at the same time.</p>
+<p>A self-run Kafka cluster with expensive authentication and clients that reconnect without jitter can melt down in exactly the same way. Artie's real fixes, jitter and SCRAM, work on both sides of the fence. AWS's own guidance for MSK even recommends alarming on the IAM connection creation rate for this reason.</p>
+<p>So the outage explains why they were angry. It does not explain the 59%.</p>
+<p>The number had to come from somewhere else.</p>
+<h2>The line nobody priced</h2>
+<p>Artie's comparison comes with assumptions, and to their credit, they are written down. The zone count is stated plainly. It is just easy to read past.</p>
+<p>The self-run cluster runs in a single availability zone. The MSK cluster runs across three.</p>
+<p>An availability zone is a separate data centre inside an AWS region, with its own power and network. Spreading a Kafka cluster across three zones means a whole data centre can fail and your producers and consumers keep going. Keep everything in one zone, and a zone outage takes your cluster down until the zone recovers. Artie says this openly too: each message is still stored on three brokers, so losing one broker is fine, but a zone failure stops the cluster. Multi-zone is on their roadmap.</p>
+<p>That is the flat without power backup. It is a valid choice. It is just a different product.</p>
+<p>And it matters for cost more than most people expect, because of one rule in AWS billing: data that crosses from one availability zone to another is charged on both sides, $0.01 per GB going out and $0.01 per GB coming in.</p>
+<p>Kafka crosses zones a lot.</p>
+<figure><img src="https://raw.githubusercontent.com/saikumaresh/kafka-cost-model/main/docs/img/03-cross-zone-flow.gif"></figure>
+<p>Follow one message through a three-zone cluster with replication factor 3.</p>
+<p>A producer sends it to the partition's leader. If producers are spread evenly across three zones, the leader is in a different zone two times in three. That crossing is billed.</p>
+<p>The leader then copies the message to two followers, and by design they sit in the other two zones. Two more crossings, billed on both sides.</p>
+<p>A consumer reads it. Unless you have configured otherwise, it reads from the leader, which again is in another zone two times in three. Billed.</p>
+<p>Now the detail that changes everything: Amazon MSK does not charge for replication traffic between brokers. Its pricing page says so plainly. On a self-run cluster spread across three zones, you pay for every replica copy yourself.</p>
+<p>So the comparison has two moving parts hidden inside one number. Artie's cheap cluster avoids cross-zone charges by living in one zone. MSK absorbs the most expensive cross-zone traffic, replication, inside its price.</p>
+<p>I wanted to see how big each part was. Not argued. Computed.</p>
+<h2>Rebuilding the bill</h2>
+<p>I wrote a small cost model. It takes one workload, applies AWS's public list prices for us-east-1, and prices five setups. Every price has a source in the repo, mostly AWS pages, and every assumption is written down so you can disagree with it.</p>
+<p>The workload is Artie's: 5 MB/s written, which is about 13,140 GB a month, 2 TB retained, read once, replication factor 3. I used six brokers for the self-run and MSK Standard clusters, as in the original comparison, and three for MSK Express, its minimum of one per zone. For MSK Standard I priced two broker sizes: the same memory as the self-run brokers (kafka.m7g.xlarge, 16 GiB), which is what the original comparison used, and the size this workload actually needs (kafka.m7g.large, 8 GiB).</p>
+<p>Here is what came out.</p>
+<figure><img src="https://raw.githubusercontent.com/saikumaresh/kafka-cost-model/main/docs/img/04-five-bills.png"></figure>
+<pre>Setup                                            Monthly cost
+Self-run, 1 zone (clients in the same zone)            $1,016
+Self-run, 3 zones                                      $1,892
+MSK Standard, 3 zones, same memory (m7g.xlarge)        $2,737
+MSK Standard, 3 zones, right-sized (m7g.large)         $1,844
+MSK Express, 3 zones                                   $1,575
+</pre>
+<p>Read that table slowly, because it says three things.</p>
+<p>First, Artie's numbers check out. The one-zone cluster costs $1,016 in infrastructure. Add a 25% fee on compute and it lands at about $1,145, close to their $1,119. On the MSK side, six memory-matched brokers across three zones come to $2,737, within three dollars of their $2,740. I went looking for a mistake and did not find one. That matters, because what follows is not a gotcha.</p>
+<p>Second, the 59% is made of two separate decisions, and neither is "who runs Kafka". One is the zone count: moving the self-run cluster from one zone to three adds $876 a month. The other is broker size: memory-matched MSK brokers cost $893 a month more than the size this workload needs. Those two choices are almost the entire gap.</p>
+<p>Third, and this is the twist that matters: make the zone count equal and the self-run cluster costs $1,892. That is still 31% below memory-matched MSK. A real saving. But it is roughly level with a right-sized MSK Standard cluster at $1,844, and about 20% more than MSK Express at $1,575, which was the cheapest three-zone option in the whole table.</p>
+<p>Look at where the money goes in that self-run row.</p>
+<pre>Self-run, 3 zones          Monthly
+Brokers (6 x r8g.large)       $516
+Disks (gp3, all replicas)     $480
+Load balancer and IP           $20
+Replication across zones      $526
+Producers across zones        $175
+Consumers across zones        $175
+</pre>
+<p>The replication line, $526, costs about as much as all six brokers. It is the line MSK does not charge for. It is invisible on the one-zone bill because there is nothing to cross.</p>
+<p>The whole model is a few rules like this one (simplified from the repo), and this is the line that decides the story:</p>
+<pre>def replication_across_zones(ingest_gb, zones, rf=3, managed=False):
+    if managed or zones == 1:
+        return 0.0                      # MSK does not bill it; one zone has nothing to cross
+    copies = rf - 1                     # the leader sends each message to two followers
+    return ingest_gb * copies * (0.01 + 0.01)   # $0.01 out + $0.01 in per GB
+</pre>
+<p>13,140 GB a month, times two copies, times two cents. $526. Nothing clever. That is the point. The number was always there. It was just sitting on a line that one side of the comparison did not have.</p>
+<p>The model also prices storage differently for each option, which is worth a sentence. MSK Standard and self-run Kafka bill disk for every replica on every broker, so 2 TB retained becomes 6 TB of disk. MSK Express bills on data stored, the way AWS's own pricing example does it, so 2 TB is 2 TB. That is a big part of why Express, at twice the hourly broker price, still comes out cheapest across three zones at this size.</p>
+<p>I added eight small tests to keep the rules honest: MSK never pays for replication, a one-zone cluster has no cross-zone cost, rack awareness removes only consumer traffic, and so on. Two of them check that the model rebuilds Artie's own totals. If you think a rule is wrong, change it and the totals move in front of you.</p>
+<p>The cheaper Kafka was not cheaper because someone else ran it badly. It was cheaper because it was a different architecture.</p>
+<p>That is the thing a single invoice cannot tell you. And there was a second choice sitting in the MSK column.</p>
+<h2>Where $2,740 comes from</h2>
+<p>The MSK number rebuilds only when MSK gets brokers with the same memory as the self-run ones. That sounds like the fairest possible comparison. Same hardware on both sides. Who could argue?</p>
+<p>I would, gently, because "same hardware" and "same need" are different questions.</p>
+<p>An r8g.large has 2 vCPUs and 16 GiB of memory. The matching MSK broker is a kafka.m7g.xlarge, also 16 GiB, at $0.408 an hour. The next size down, kafka.m7g.large, has 8 GiB at half the price. At 5 MB/s, six of the smaller brokers have a lot of headroom. Kafka leans on memory mostly for the operating system's page cache, so recent messages are served from memory instead of disk. With 2 TB retained and consumers reading close to the head of the log, the hot set is small. I would start this workload on the smaller brokers and watch disk reads and request latency before sizing up.</p>
+<p>So which comparison is right? Both, depending on the question. Matching hardware answers "what does the same machine cost when someone else runs it?" Right-sizing answers "what would I actually pay to run this workload?" The second is the one a budget owner cares about. It is also the one a vendor comparison will rarely choose, because every vendor sizes the alternative the way it sizes its own product. That is not dishonest. It is just a choice, and choices belong on the page.</p>
+<p>This is why I put broker size into the model as a switch rather than a fact. Flip it, and $893 moves. Flip the zone count, and $876 moves. Neither switch says anything about whether Kafka is run by AWS, by Artie, or by your own team.</p>
+<p>The same check applies in every direction. If someone shows you that MSK is cheaper than self-run, ask the same two questions back. Did they run self-run Kafka in three zones with every replica billed? Did they size it the way you would? A comparison built on the other side's worst setup is just as misleading as one built on its best.</p>
+<p>Here is the rule I use. Before you compare two totals, write down two things for each side: how many failure domains it spans, and how big the machines are relative to the workload. If those two lines do not match, you are not comparing prices yet. You are comparing decisions.</p>
+<p>And that is before the cost that grows every month without anyone signing off on it.</p>
+<h2>The cost that grows with you, and the one that never shows up</h2>
+<p>Brokers scale in steps. Network charges scale with every byte.</p>
+<p>Here is the same model with the broker count held steady and only the traffic changing. Monthly totals, default client settings:</p>
+<pre>Traffic in  Self-run, 1 zone  Self-run, 3 zones  MSK Standard, same memory  MSK Standard, right-sized  MSK Express
+5 MB/s                $1,016             $1,892                     $2,737                     $1,844       $1,575
+10 MB/s               $1,016             $2,768                     $3,088                     $2,194       $2,057
+20 MB/s               $1,016             $4,520                     $3,789                     $2,895       $3,021
+50 MB/s               $1,016             $9,776                     $5,891                     $4,998       $5,912
+</pre>
+<p>Somewhere between 10 and 20 MB/s, the three-zone self-run cluster passes even the memory-matched MSK cluster, and at 50 MB/s it costs roughly twice a right-sized one, because replication, producer and consumer traffic all grow with every byte. In real life you would add brokers too, but the network line does not care how many brokers you have. It cares how many bytes cross a zone.</p>
+<p>Two more things hide in that table. The one-zone column never moves, because nothing crosses a zone; that is the whole appeal, and the whole risk. And MSK Standard becomes cheaper than Express somewhere between 10 and 20 MB/s, because Express charges a cent for every GB written. There is no option that wins at every size. There is only the option that fits your shape.</p>
+<p>So the honest version of the saving looks like this. Self-run Kafka can be much cheaper if you accept one zone. Across three zones at small scale, it beats memory-matched MSK, roughly ties a right-sized one, and loses to Express. And it gets relatively more expensive on network as traffic grows, unless you change the architecture.</p>
+<p>There are real ways to change it, and they work whether you self-run or use MSK.</p>
+<p><strong>Let consumers read from the nearest replica.</strong> Kafka has supported this since version 2.4 (KIP-392). The consumer tells Kafka which zone it lives in, and the broker serves it from a replica in the same zone instead of from the leader.</p>
+<pre># Broker (on MSK, set through a custom configuration)
+replica.selector.class=org.apache.kafka.common.replica.RackAwareReplicaSelector
+
+# Consumer: the AWS zone ID it runs in
+client.rack=use1-az6
+</pre>
+<p>In my model, this alone removes $175 a month from every three-zone setup. AWS's own write-up says closest-replica fetching can cut up to two-thirds of cross-zone consumer charges. The cost: reads from a follower can be slightly behind the leader, which matters for a few latency-sensitive consumers and nobody else.</p>
+<p><strong>Make authentication cheap, and make reconnects polite.</strong> The May 2024 outage is a reminder that connection storms are a design problem. Spread reconnect attempts with backoff and jitter so clients do not all knock at once:</p>
+<pre>reconnect.backoff.ms=500
+reconnect.backoff.max.ms=10000
+</pre>
+<p>Kafka clients apply random jitter on top of this exponential backoff. If you use IAM authentication on MSK, alarm on connection creation rate before it hits the broker's limit, as AWS recommends. If authentication cost is your bottleneck, SASL/SCRAM moves the expensive hashing to the client.</p>
+<p><strong>Use tiered storage before you buy bigger disks.</strong> Kafka's tiered storage (KIP-405) keeps recent data on broker disks and moves older segments to object storage. It attacks the "disks only grow" problem directly. Artie built it into their setup, and MSK Standard offers a cheaper storage tier too.</p>
+<p>Notice that two of Artie's original pains have also moved since 2024. MSK Express brokers have no disks to provision at all, and since November 2025 they rebalance partitions automatically when you scale, extended to existing clusters in June 2026, at no extra charge. That does not undo Artie's experience. It does mean the question "managed or self-run?" has a different answer in 2026 than it had in 2024.</p>
+<p>Then there is the cost that no invoice shows.</p>
+<p>Every self-run row in my model leaves out people. Someone replaces failed brokers, rebalances partitions, grows disks, upgrades Kafka one broker at a time, and picks up the phone when a consumer group starts looping at night. Artie's model handles this by putting its own engineers on call and charging 25% of compute for it. That is a fair trade. If you self-run without a vendor, that line is your team's time, and it is usually larger than the broker bill.</p>
+<p>A cloud bill is a list of what the machines cost. It is not a list of what the system costs.</p>
+<p>So how do you compare two options honestly, without spending a week on spreadsheets? I use the same five questions every time.</p>
+<h2>Compare architectures, not invoices</h2>
+<p>When someone forwards a cost comparison, managed vs self-run, warehouse A vs warehouse B, model X vs model Y, I do not start with the totals. I start by making the two sides the same system.</p>
+<p>That is the whole idea: <strong>compare architectures, not invoices.</strong> In practice it is five questions.</p>
+<figure><img src="https://raw.githubusercontent.com/saikumaresh/kafka-cost-model/main/docs/img/05-five-questions.png"></figure>
+<p><strong>[1] Same resilience, same size?</strong> Count the failure domains on each side, and compare machine sizes to the workload, not to each other. One zone vs three is not a pricing difference. It is a different product. Price the one you would actually run, at the size you would actually run it.</p>
+<p><strong>[2] Same traffic path?</strong> Trace one message from producer to consumer and count every boundary it crosses: zone, region, VPC, internet. Each crossing is a line on the bill.</p>
+<p><strong>[3] What is bundled for free?</strong> Managed services hide costs inside their price, and some of those are large. MSK's free replication across zones is worth $526 a month at this tiny workload. Find the free lines before you compare totals.</p>
+<p><strong>[4] What grows with traffic?</strong> Separate the costs that move in steps (brokers, disks) from the costs that move with every byte (network, per-GB fees). A setup that is cheap today can be expensive at ten times the traffic.</p>
+<p><strong>[5] Who gets paged?</strong> Put a number on operations: on-call, upgrades, incidents, the engineers who know how it works. If the comparison has no line for people, it is not finished.</p>
+<p>This is the same habit I use when migrating pipelines. When I moved dozens of production pipelines into a governed schema, nothing shipped until row counts and every column matched both ways. Not because I distrusted the new pipelines, but because "it looks the same" is not evidence. Cost comparisons deserve the same parity check. If two bills are not describing the same system, the difference between them means nothing yet.</p>
+<p>So what does that mean when the next screenshot lands on your desk?</p>
+<h2>So what does this mean for you</h2>
+<p>This trap is not specific to Kafka. It shows up everywhere someone puts two totals next to each other.</p>
+<p>A warehouse benchmark that runs one engine on a warm cache and the other cold. An LLM cost-per-token comparison where one model needs three times the tokens to answer the same question. A "we cut our cloud bill in half" story that quietly dropped a disaster recovery region. Each one is the flat without power backup.</p>
+<p>Three lessons to take into your next planning meeting:</p>
+<ul>
+<li>A cheaper bill can be a different architecture. Make both sides the same system before you compare.</li>
+<li>The expensive line is often the one that is free on one side. Look for what is bundled.</li>
+<li>Rebuild the number from public inputs before you build a decision on it. Write down both the zone count and the machine size.</li>
+</ul>
+<p>If you want my default answer, it depends on the shape of your team more than the shape of your bill.</p>
+<p>A small team with modest traffic and no Kafka specialists should start managed, turn on rack awareness on day one, and look at Express before it looks at bigger Standard brokers. The bill is predictable and nobody learns partition reassignment at midnight.</p>
+<p>A team whose workloads can survive a zone outage, such as a replayable analytics feed where the source of truth lives elsewhere, can reasonably run one zone and keep the saving. Write that decision down, with the outage you are accepting, so the next person does not discover it during one.</p>
+<p>A platform team at serious scale, with people who already run Kafka well, is where self-run starts to pay: you can tune what managed services will not expose, and the operations cost is spread over a lot of traffic. Even there, the cross-zone line is the first thing I would model, not the last.</p>
+<p>Artie's engineering is real, and for some teams a single-zone cluster with someone else on call is exactly the right trade. Maybe that is your team. But you should choose it knowing it is a different product, not because a screenshot said 59%.</p>
+<p>Now think about the last cost comparison that landed in your inbox. Did both sides describe the same system?</p>
+<p>The model is open, small, and easy to change: <a href="https://github.com/saikumaresh/kafka-cost-model">github.com/saikumaresh/kafka-cost-model</a>. Plug in your own traffic, retention and discounts, and see which line moves.</p>
+<p>In my last article, I tested whether an AI could clone an app and found that copying was cheap but proving was not: <a href="https://medium.com/@saikumaresh/reverse-engineer-anything-ai-clone-parity-test-aedfa1573adb">Reverse Engineer Anything: I Tested an AI Clone</a>. This one is the same lesson with a price tag. Two systems that look the same are not the same until you have checked.</p>
+<h2>Quick answers</h2>
+<p><strong>Is Amazon MSK more expensive than self-managed Kafka?</strong>
+It depends on two choices more than on the operator. In my model, self-run Kafka across three zones was 31% cheaper than memory-matched MSK Standard, about level with right-sized MSK Standard, and 20% dearer than MSK Express. One-zone self-run is cheapest but survives no zone outage. People costs are extra.</p>
+<p><strong>Why does Kafka cost so much in cross-AZ data transfer?</strong>
+AWS charges $0.01 per GB on each side when data crosses availability zones. In a three-zone Kafka cluster, producers often write to a leader in another zone, every message is copied to followers in the other two zones, and consumers often read across zones. On self-run Kafka every one of those crossings is billed.</p>
+<p><strong>How do I reduce Kafka cross-AZ costs on AWS?</strong>
+Turn on rack awareness so consumers read from a replica in their own zone: set replica.selector.class to RackAwareReplicaSelector on the brokers and client.rack to the consumer's zone ID. Keep producers close to leaders where you can, use tiered storage instead of larger disks, and check whether a managed option absorbs replication cost.</p>
+<p><strong>When does self-managed Kafka make sense?</strong>
+When you accept the trade-offs knowingly: for example, a single-zone cluster for workloads that can tolerate a zone outage, very high scale where you have a dedicated platform team, or a need for broker settings a managed service will not expose. Price the operations work, not just the instances.</p>
+<p>Sources: Artie, "We Left MSK, Built Our Own Kafka, and Now Sell It at EC2 + 25%" (3 November 2026), https://www.artie.com/blogs/we-left-msk-built-our-own-kafka. Amazon MSK pricing, https://aws.amazon.com/msk/pricing/, and the AWS Price List API offer file for MSK in us-east-1 (published 4 November 2026). AWS Architecture Blog, data transfer costs across availability zones, https://aws.amazon.com/blogs/architecture/exploring-data-transfer-costs-for-aws-managed-databases. AWS Big Data Blog, rack awareness for MSK consumers, https://aws.amazon.com/blogs/big-data/reduce-network-traffic-costs-of-your-amazon-msk-consumers-with-rack-awareness. Amazon MSK best practices, IAM connection alarms, https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-cw-alarms.html. MSK Express intelligent rebalancing (November 2025), https://aws.amazon.com/about-aws/whats-new/2025/11/aws-msk-express-brokers-support-intelligent-rebalancing, and on existing clusters (June 2026), https://aws.amazon.com/about-aws/whats-new/2026/06/amazon-msk-express-intelligent/. Kafka KIP-392, fetch from closest replica, https://cwiki.apache.org/confluence/display/KAFKA/KIP-392%3A+Allow+consumers+to+fetch+from+closest+replica. Kafka KIP-405, tiered storage, https://cwiki.apache.org/confluence/display/KAFKA/KIP-405%3A+Kafka+Tiered+Storage. EC2 r8g.large price, https://instances.vantage.sh/aws/ec2/r8g.large. The full model: https://github.com/saikumaresh/kafka-cost-model</p>
+<p>This is a personal analysis using public list prices. It is not affiliated with AWS or any Kafka vendor.</p>
+<p>Thank you for taking the time to read this article. I hope you found it useful.</p>
+<p>If you enjoyed it, follow me here on Medium for more on data engineering and applied AI in production. 💻✨</p>
+<p>For questions or a deeper discussion, feel free to reach out to me at saikumaresh007@gmail.com. 📧</p>
+<p>Let's connect on LinkedIn: https://www.linkedin.com/in/sai-kumaresh/ 🤝</p>
+<p>I'd love to hear your feedback. Your thoughts and suggestions are always appreciated. 📝👍</p>
+<p>Happy building! 🚀</p>
