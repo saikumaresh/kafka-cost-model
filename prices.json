@@ -20,7 +20,7 @@
   },
   "msk_standard_m7g_large_hour": {
     "value": 0.204,
-    "source": "https://aws.amazon.com/msk/pricing/ (Example 1)"
+    "source": "https://aws.amazon.com/msk/pricing/ (Example 1); AWS Price List API, AmazonMSK us-east-1 offer file (publication 2026-11-04): https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonMSK/current/us-east-1/index.json (USE1-Kafka.m7g.large)"
   },
   "msk_standard_storage_gb_month": {
     "value": 0.1,
@@ -28,7 +28,7 @@
   },
   "msk_express_m7g_large_hour": {
     "value": 0.408,
-    "source": "https://aws.amazon.com/msk/pricing/ (Example 4)"
+    "source": "https://aws.amazon.com/msk/pricing/ (Example 4); AWS Price List API, AmazonMSK us-east-1 offer file (publication 2026-11-04): https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonMSK/current/us-east-1/index.json (USE1-Express.m7g.large)"
   },
   "msk_express_storage_gb_month": {
     "value": 0.1,
@@ -48,6 +48,6 @@
   },
   "msk_standard_m7g_xlarge_hour": {
     "value": 0.408,
-    "source": "https://aws.amazon.com/msk/pricing/ (MSK broker prices scale linearly with size: m7g.xlarge, 16 GiB, is twice m7g.large, 8 GiB)"
+    "source": "AWS Price List API, AmazonMSK us-east-1 offer file (publication 2026-11-04): https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonMSK/current/us-east-1/index.json (USE1-Kafka.m7g.xlarge)"
   }
 }

@@ -43,7 +43,7 @@ Prices and their sources live in [prices.json](prices.json). Change them for you
 ## Assumptions
 
 - Six brokers for self-run and MSK Standard (the broker count in the original comparison); three for MSK Express (its minimum, one per zone).
-- Broker size: self-run uses r8g.large (2 vCPU, 16 GiB). MSK Standard is priced both memory-matched (kafka.m7g.xlarge, 16 GiB, as in the original comparison) and right-sized for 5 MB/s (kafka.m7g.large, 8 GiB). The m7g.xlarge price ($0.408/h) is twice the published m7g.large price, as MSK broker prices scale with size.
+- Broker size: self-run uses r8g.large (2 vCPU, 16 GiB). MSK Standard is priced both memory-matched (kafka.m7g.xlarge, 16 GiB, as in the original comparison) and right-sized for 5 MB/s (kafka.m7g.large, 8 GiB). Broker prices come from the AWS Price List API offer file for MSK in us-east-1 (kafka.m7g.large $0.204/h, kafka.m7g.xlarge $0.408/h).
 - Standard storage is billed on every replica (each broker's disk). Express storage is billed on data stored, as in AWS's own pricing example.
 - Clients sit evenly across three zones, so two times in three a producer or consumer talks to a leader in another zone. Cross-zone traffic costs $0.01/GB on each side.
 - In the one-zone row, clients are in the same zone, as in the original comparison. A real zone outage takes that cluster down.
@@ -54,7 +54,7 @@ This is a personal project for learning. It is not affiliated with AWS or any Ka
 ## Sources
 
 - Artie, "We Left MSK, Built Our Own Kafka, and Now Sell It at EC2 + 25%", 3 November 2026: https://www.artie.com/blogs/we-left-msk-built-our-own-kafka
-- Amazon MSK pricing: https://aws.amazon.com/msk/pricing/
+- Amazon MSK pricing: https://aws.amazon.com/msk/pricing/ and the AWS Price List API offer file: https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonMSK/current/us-east-1/index.json
 - AWS, cross-zone transfer billed on both sides: https://aws.amazon.com/blogs/architecture/exploring-data-transfer-costs-for-aws-managed-databases
 - AWS, rack awareness for MSK consumers: https://aws.amazon.com/blogs/big-data/reduce-network-traffic-costs-of-your-amazon-msk-consumers-with-rack-awareness
 - MSK Express intelligent rebalancing (Nov 2025) and on existing clusters (June 2026): https://aws.amazon.com/about-aws/whats-new/2025/11/aws-msk-express-brokers-support-intelligent-rebalancing , https://aws.amazon.com/about-aws/whats-new/2026/06/amazon-msk-express-intelligent/
