@@ -1,6 +1,6 @@
 # Kafka on AWS: same workload, four setups
 
-A vendor post recently compared self-run Kafka with Amazon MSK and reported a 59% saving. The headline number compares a cluster in **one availability zone** with MSK running across **three**. This repo recomputes the same workload with public AWS list prices, so the difference you see comes from the architecture, not from who runs the cluster.
+A vendor post recently compared self-run Kafka with Amazon MSK and reported a 59% saving. This repo recomputes the same workload with public AWS list prices. The vendor's numbers rebuild almost exactly. The saving comes from two choices, not from who runs the cluster: **one availability zone instead of three**, and **MSK brokers sized to match the self-run hardware rather than the workload**.
 
 Write-up: _link added after publishing_
 
@@ -12,17 +12,20 @@ Workload: 5 MB/s written (13,140 GB a month), 2 TB retained, read once, replicat
 |---|---:|---:|
 | Self-run, 1 zone (clients in the same zone) | $1,016 | $1,016 |
 | Self-run, 3 zones | $1,892 | $1,717 |
-| MSK Standard, 3 zones | $1,844 | $1,669 |
+| MSK Standard, 3 zones, same memory (m7g.xlarge, 16 GiB) | $2,737 | $2,562 |
+| MSK Standard, 3 zones, right-sized (m7g.large, 8 GiB) | $1,844 | $1,669 |
 | MSK Express, 3 zones | $1,575 | $1,400 |
 
 What this shows:
-- **One zone vs three is most of the gap.** The one-zone self-run cluster is 45% cheaper than MSK Standard on infrastructure.
-- **Match the resilience and the saving disappears.** Spread the self-run cluster over three zones and it costs slightly more than MSK Standard, because every replica copy crosses a zone and is billed on both sides ($526 a month here, about the same as the brokers). MSK does not charge for replication between brokers.
-- **Express is the cheapest three-zone option at this size**, even at twice the hourly broker price, because it bills storage on data stored rather than on every replica.
+- **The vendor's figures rebuild.** One-zone self-run plus a 25% fee on compute is about $1,145 (vendor: $1,119). Memory-matched MSK Standard is $2,737 (vendor: $2,740).
+- **Two choices make up the gap.** Moving self-run from one zone to three adds $876 a month. Memory-matched MSK brokers cost $893 a month more than right-sized ones.
+- **With equal zones, self-run saves 31% against memory-matched MSK**, roughly ties right-sized MSK Standard, and costs about 20% more than MSK Express.
+- **Replication across zones is the big hidden line.** A three-zone self-run cluster pays $526 a month to copy replicas between zones, about the same as its brokers. MSK does not charge for replication between brokers.
+- **Express is the cheapest three-zone option at this size**, because it bills storage on data stored rather than on every replica. Above roughly 10 to 20 MB/s, right-sized Standard becomes cheaper, because Express charges per GB written.
 - **Rack awareness is free money.** Letting consumers read from a replica in their own zone removes $175 a month in every three-zone setup.
-- **None of this includes people.** The self-run rows exclude the engineers who replace brokers, rebalance partitions and answer pages. Add that to compare honestly.
+- **None of this includes people.** The self-run rows exclude the engineers who replace brokers, rebalance partitions and answer pages.
 
-At higher traffic the cross-zone line grows linearly while the brokers do not, so the gap widens. With brokers held constant, at 50 MB/s the three-zone self-run cluster costs about twice MSK Standard (`python3 model.py --mbps 50`).
+At higher traffic the cross-zone lines grow linearly while the brokers do not. With brokers held constant, at 50 MB/s the three-zone self-run cluster costs about twice right-sized MSK Standard (`python3 model.py --mbps 50`).
 
 Full line items: [results.txt](results.txt).
 
@@ -32,19 +35,19 @@ Full line items: [results.txt](results.txt).
 python3 model.py                                   # default workload
 python3 model.py --mbps 20 --retained-tb 10 --reads 3
 python3 model.py --json
-python3 -m pytest -q                               # 6 checks on the pricing rules
+python3 -m pytest -q                               # 8 checks, including that it rebuilds the vendor totals
 ```
 
 Prices and their sources live in [prices.json](prices.json). Change them for your region or discounts.
 
 ## Assumptions
 
-- Six brokers for self-run and MSK Standard (the broker count in the original comparison); three for MSK Express (its minimum, one per zone). The workload is small enough for both.
+- Six brokers for self-run and MSK Standard (the broker count in the original comparison); three for MSK Express (its minimum, one per zone).
+- Broker size: self-run uses r8g.large (2 vCPU, 16 GiB). MSK Standard is priced both memory-matched (kafka.m7g.xlarge, 16 GiB, as in the original comparison) and right-sized for 5 MB/s (kafka.m7g.large, 8 GiB). The m7g.xlarge price ($0.408/h) is twice the published m7g.large price, as MSK broker prices scale with size.
 - Standard storage is billed on every replica (each broker's disk). Express storage is billed on data stored, as in AWS's own pricing example.
 - Clients sit evenly across three zones, so two times in three a producer or consumer talks to a leader in another zone. Cross-zone traffic costs $0.01/GB on each side.
 - In the one-zone row, clients are in the same zone, as in the original comparison. A real zone outage takes that cluster down.
 - No reserved instances, savings plans, tiered storage or internet egress. A managed vendor's fee (for example 25% of compute) is not included.
-- Vendor figures from the original post could not be fully reproduced from public prices, because not all of its inputs are published.
 
 This is a personal project for learning. It is not affiliated with AWS or any Kafka vendor, and it is not pricing advice. Check current prices before deciding.
 

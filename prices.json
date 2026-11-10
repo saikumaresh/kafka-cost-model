@@ -2,15 +2,52 @@
   "_region": "us-east-1",
   "_hours_per_month": 730,
   "_checked": "2026-11-10",
-  "ec2_r8g_large_hour": {"value": 0.11782, "source": "https://instances.vantage.sh/aws/ec2/r8g.large (AWS on-demand Linux)"},
-  "ebs_gp3_gb_month": {"value": 0.08, "source": "https://aws.amazon.com/ebs/pricing/"},
-  "nlb_month": {"value": 16.0, "source": "Artie example cluster line item (load balancer)"},
-  "public_ipv4_month": {"value": 4.0, "source": "Artie example cluster line item (public IPv4)"},
-  "msk_standard_m7g_large_hour": {"value": 0.204, "source": "https://aws.amazon.com/msk/pricing/ (Example 1)"},
-  "msk_standard_storage_gb_month": {"value": 0.10, "source": "https://aws.amazon.com/msk/pricing/"},
-  "msk_express_m7g_large_hour": {"value": 0.408, "source": "https://aws.amazon.com/msk/pricing/ (Example 4)"},
-  "msk_express_storage_gb_month": {"value": 0.10, "source": "https://aws.amazon.com/msk/pricing/ (Example 4, billed on data stored)"},
-  "msk_express_data_in_gb": {"value": 0.01, "source": "https://aws.amazon.com/msk/pricing/ (Example 4)"},
-  "cross_az_gb_each_side": {"value": 0.01, "source": "https://aws.amazon.com/blogs/architecture/exploring-data-transfer-costs-for-aws-managed-databases ($0.01/GB in and $0.01/GB out)"},
-  "msk_replication_charged": {"value": false, "source": "https://aws.amazon.com/msk/pricing/ (no charge for replication between brokers)"}
+  "ec2_r8g_large_hour": {
+    "value": 0.11782,
+    "source": "https://instances.vantage.sh/aws/ec2/r8g.large (AWS on-demand Linux)"
+  },
+  "ebs_gp3_gb_month": {
+    "value": 0.08,
+    "source": "https://aws.amazon.com/ebs/pricing/"
+  },
+  "nlb_month": {
+    "value": 16.0,
+    "source": "Artie example cluster line item (AWS NLB hourly charge, about $16/month); https://aws.amazon.com/elasticloadbalancing/pricing/"
+  },
+  "public_ipv4_month": {
+    "value": 4.0,
+    "source": "https://aws.amazon.com/vpc/pricing/ ($0.005/hour per public IPv4 address, about $3.65/month, rounded to $4)"
+  },
+  "msk_standard_m7g_large_hour": {
+    "value": 0.204,
+    "source": "https://aws.amazon.com/msk/pricing/ (Example 1)"
+  },
+  "msk_standard_storage_gb_month": {
+    "value": 0.1,
+    "source": "https://aws.amazon.com/msk/pricing/"
+  },
+  "msk_express_m7g_large_hour": {
+    "value": 0.408,
+    "source": "https://aws.amazon.com/msk/pricing/ (Example 4)"
+  },
+  "msk_express_storage_gb_month": {
+    "value": 0.1,
+    "source": "https://aws.amazon.com/msk/pricing/ (Example 4, billed on data stored)"
+  },
+  "msk_express_data_in_gb": {
+    "value": 0.01,
+    "source": "https://aws.amazon.com/msk/pricing/ (Example 4)"
+  },
+  "cross_az_gb_each_side": {
+    "value": 0.01,
+    "source": "https://aws.amazon.com/blogs/architecture/exploring-data-transfer-costs-for-aws-managed-databases ($0.01/GB in and $0.01/GB out)"
+  },
+  "msk_replication_charged": {
+    "value": false,
+    "source": "https://aws.amazon.com/msk/pricing/ (no charge for replication between brokers)"
+  },
+  "msk_standard_m7g_xlarge_hour": {
+    "value": 0.408,
+    "source": "https://aws.amazon.com/msk/pricing/ (MSK broker prices scale linearly with size: m7g.xlarge, 16 GiB, is twice m7g.large, 8 GiB)"
+  }
 }

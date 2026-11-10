@@ -42,9 +42,9 @@ def self_run(w, zones, brokers=6, rack_aware=False):
     return items
 
 
-def msk_standard(w, brokers=6, rack_aware=False):
+def msk_standard(w, brokers=6, rack_aware=False, size="large"):
     items = {}
-    items["brokers (kafka.m7g.large)"] = brokers * P["msk_standard_m7g_large_hour"] * H
+    items[f"brokers (kafka.m7g.{size})"] = brokers * P[f"msk_standard_m7g_{size}_hour"] * H
     items["storage (all replicas)"] = w["replicated_gb"] * P["msk_standard_storage_gb_month"]
     items["replication across zones"] = 0.0     # not charged by MSK
     p, c = client_cross_az(w, 3, rack_aware)
@@ -67,6 +67,7 @@ def scenarios(w, rack_aware=False):
     return {
         "Self-run, 1 zone (clients in same zone)": self_run(w, 1),
         "Self-run, 3 zones": self_run(w, 3, rack_aware=rack_aware),
+        "MSK Standard, 3 zones, same memory (m7g.xlarge)": msk_standard(w, rack_aware=rack_aware, size="xlarge"),
         "MSK Standard, 3 zones": msk_standard(w, rack_aware=rack_aware),
         "MSK Express, 3 zones": msk_express(w, rack_aware=rack_aware),
     }
@@ -92,7 +93,7 @@ def main():
     for mode, res in out.items():
         print(f"== {'consumers read from nearest replica (rack awareness)' if mode=='rack_aware' else 'default client settings'} ==")
         for name, r in res.items():
-            print(f"{name:42s} ${r['total']:>9,.2f}")
+            print(f"{name:50s} ${r['total']:>9,.2f}")
         print()
     print("Line items (default settings):")
     for name, r in out["default"].items():

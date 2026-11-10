@@ -1,16 +1,18 @@
 Workload: 5 MB/s in (13,140 GB/month), 2 TB retained, read 1x, replication factor 3, us-east-1, 730 h/month
 
 == default client settings ==
-Self-run, 1 zone (clients in same zone)    $ 1,016.05
-Self-run, 3 zones                          $ 1,892.05
-MSK Standard, 3 zones                      $ 1,843.92
-MSK Express, 3 zones                       $ 1,575.32
+Self-run, 1 zone (clients in same zone)            $ 1,016.05
+Self-run, 3 zones                                  $ 1,892.05
+MSK Standard, 3 zones, same memory (m7g.xlarge)    $ 2,737.44
+MSK Standard, 3 zones                              $ 1,843.92
+MSK Express, 3 zones                               $ 1,575.32
 
 == consumers read from nearest replica (rack awareness) ==
-Self-run, 1 zone (clients in same zone)    $ 1,016.05
-Self-run, 3 zones                          $ 1,716.85
-MSK Standard, 3 zones                      $ 1,668.72
-MSK Express, 3 zones                       $ 1,400.12
+Self-run, 1 zone (clients in same zone)            $ 1,016.05
+Self-run, 3 zones                                  $ 1,716.85
+MSK Standard, 3 zones, same memory (m7g.xlarge)    $ 2,562.24
+MSK Standard, 3 zones                              $ 1,668.72
+MSK Express, 3 zones                               $ 1,400.12
 
 Line items (default settings):
 
@@ -27,6 +29,13 @@ Self-run, 3 zones
   disks (gp3, all replicas)          $   480.00
   load balancer + IPv4               $    20.00
   replication across zones           $   525.60
+  producers across zones             $   175.20
+  consumers across zones             $   175.20
+
+MSK Standard, 3 zones, same memory (m7g.xlarge)
+  brokers (kafka.m7g.xlarge)         $ 1,787.04
+  storage (all replicas)             $   600.00
+  replication across zones           $     0.00
   producers across zones             $   175.20
   consumers across zones             $   175.20
 
