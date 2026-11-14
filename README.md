@@ -2,7 +2,7 @@
 
 A vendor post recently compared self-run Kafka with Amazon MSK and reported a 59% saving. This repo recomputes the same workload with public AWS list prices. The vendor's numbers rebuild almost exactly. The saving comes from two choices, not from who runs the cluster: **one availability zone instead of three**, and **MSK brokers sized to match the self-run hardware rather than the workload**.
 
-Write-up: _link added after publishing_
+Write-up: [They Left Amazon MSK and Saved 59%. Read the Fine Print.](https://medium.com/@saikumaresh/they-left-amazon-msk-and-saved-59-read-the-fine-print-747821f02f65)
 
 ## Result (us-east-1, list prices checked 10 November 2026)
 
